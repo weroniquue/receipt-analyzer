@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,11 +26,13 @@ import java.util.stream.Collectors;
 public class ImagesController {
 
     private static final String START_PRODUCT_LIST = "PARAGON FISKALNY";
+    private static final String NIP = "NIP";
     private static final String FLOAT_PRICE_PATTERN = "\\d+(?:[\\.,]\\d+)?";
+    private static final String DATE_PATTERN = "\\d{4}-\\d{2}-\\d{2}";
     ResourceLoader resourceLoader;
     private CloudVisionTemplate cloudVisionTemplate;
 
-    public static double round(double value) {
+    public static float round(double value) {
         BigDecimal bd = BigDecimal.valueOf(value);
         bd = bd.setScale(2, RoundingMode.HALF_UP);
         return bd.floatValue();
@@ -39,10 +42,12 @@ public class ImagesController {
     public TextDetectionResponse getTextDetection(@RequestBody TextDetectionRequest request) {
         byte[] decodeImage = Base64.getDecoder().decode(request.getEncodedImage());
         ByteArrayResource imageResource = new ByteArrayResource(decodeImage);
-//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/6535.jpg");
+//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/lidl.png");
 
         AnnotateImageResponse response = this.cloudVisionTemplate.analyzeImage(imageResource, Feature.Type.DOCUMENT_TEXT_DETECTION);
         List<String> textAnnotationsList = Arrays.stream(response.getFullTextAnnotation().getText().replaceAll(",", ".").split("\n")).collect(Collectors.toList());
+        int shopDetailsEndIndex = textAnnotationsList.indexOf(getIndexOfEndShopDetails(textAnnotationsList));
+
         int productStartIndex = textAnnotationsList.indexOf(getIndexOfStartProductList(textAnnotationsList));
         List<Product> products = textAnnotationsList.subList(productStartIndex, textAnnotationsList.size())
                 .stream()
@@ -51,11 +56,27 @@ public class ImagesController {
                 .filter(item -> checkPriceEquality(item.getQuantity(), item.getPrice(), item.getTotalPrice()))
                 .collect(Collectors.toList());
 
+        String date = textAnnotationsList.subList(0, productStartIndex)
+                .stream()
+                .map(this::extractDate)
+                .filter(StringUtils::isNotBlank)
+                .findFirst()
+                .orElse(null);
+
         return TextDetectionResponse.builder()
                 .products(products)
-                .totalPrice(0)
+                .totalPrice(calculateTotalPrice(products))
+                .date(date)
+                .shopDetails(textAnnotationsList.subList(0, shopDetailsEndIndex))
                 .build();
+    }
 
+    private String getIndexOfEndShopDetails(List<String> textAnnotationsList) {
+        return textAnnotationsList.stream().filter(item -> item.toUpperCase().contains(NIP)).findFirst().orElse(null);
+    }
+
+    private float calculateTotalPrice(List<Product> products) {
+        return round(products.stream().map((Function<Product, Object>) Product::getTotalPrice).mapToDouble(a -> Double.valueOf(a.toString())).sum());
     }
 
     private boolean checkPriceEquality(float quantity, float price, float totalPrice) {
@@ -97,5 +118,10 @@ public class ImagesController {
             prices.add(m.group());
         }
         return prices;
+    }
+
+    private String extractDate(String line) {
+        Matcher m = Pattern.compile(DATE_PATTERN).matcher(line);
+        return m.find() ? m.group() : StringUtils.EMPTY;
     }
 }

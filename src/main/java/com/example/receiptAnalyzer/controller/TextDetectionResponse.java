@@ -14,4 +14,5 @@ public class TextDetectionResponse {
     private List<String> shopDetails;
     private float totalPrice;
     private String errorMessage;
+    private String date;
 }
