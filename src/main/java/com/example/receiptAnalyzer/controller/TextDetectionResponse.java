@@ -12,7 +12,6 @@ import java.util.List;
 public class TextDetectionResponse {
     private List<Product> products;
     private List<String> shopDetails;
-    private double totalPriceFromList;
-    private float readTotalPrice;
+    private float totalPrice;
     private String errorMessage;
 }
