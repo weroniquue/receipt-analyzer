@@ -42,12 +42,16 @@ public class ImagesController {
     public TextDetectionResponse getTextDetection(@RequestBody TextDetectionRequest request) {
         byte[] decodeImage = Base64.getDecoder().decode(request.getEncodedImage());
         ByteArrayResource imageResource = new ByteArrayResource(decodeImage);
-//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/lidl.png");
+//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/IMG_6986.jpg");
 
         AnnotateImageResponse response = this.cloudVisionTemplate.analyzeImage(imageResource, Feature.Type.DOCUMENT_TEXT_DETECTION);
         List<String> textAnnotationsList = Arrays.stream(response.getFullTextAnnotation().getText().replaceAll(",", ".").split("\n")).collect(Collectors.toList());
-        int shopDetailsEndIndex = textAnnotationsList.indexOf(getIndexOfEndShopDetails(textAnnotationsList));
 
+        if (textAnnotationsList.stream().filter(StringUtils::isNotBlank).count() < 7) {
+            return TextDetectionResponse.builder()
+                    .errorMessage("Brak tekstu")
+                    .build();
+        }
         int productStartIndex = textAnnotationsList.indexOf(getIndexOfStartProductList(textAnnotationsList));
         List<Product> products = textAnnotationsList.subList(productStartIndex, textAnnotationsList.size())
                 .stream()
@@ -63,12 +67,21 @@ public class ImagesController {
                 .findFirst()
                 .orElse(null);
 
+        int shopDetailsEndIndex = textAnnotationsList.indexOf(getIndexOfEndShopDetails(textAnnotationsList));
+
         return TextDetectionResponse.builder()
                 .products(products)
                 .totalPrice(calculateTotalPrice(products))
                 .date(date)
-                .shopDetails(textAnnotationsList.subList(0, shopDetailsEndIndex))
+                .shopDetails(getShopDetails(shopDetailsEndIndex, textAnnotationsList))
                 .build();
+    }
+
+    private String getShopDetails(int shopDetailsEndIndex, List<String> textAnnotationsList) {
+        if (shopDetailsEndIndex > 0 ){
+            return StringUtils.join(textAnnotationsList.subList(0, shopDetailsEndIndex));
+        }
+        return StringUtils.join(textAnnotationsList.subList(0,6));
     }
 
     private String getIndexOfEndShopDetails(List<String> textAnnotationsList) {

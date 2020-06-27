@@ -11,7 +11,7 @@ import java.util.List;
 @Builder
 public class TextDetectionResponse {
     private List<Product> products;
-    private List<String> shopDetails;
+    private String shopDetails;
     private float totalPrice;
     private String errorMessage;
     private String date;
