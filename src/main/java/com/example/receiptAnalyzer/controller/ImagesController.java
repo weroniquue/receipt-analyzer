@@ -42,7 +42,7 @@ public class ImagesController {
     public TextDetectionResponse getTextDetection(@RequestBody TextDetectionRequest request) {
         byte[] decodeImage = Base64.getDecoder().decode(request.getEncodedImage());
         ByteArrayResource imageResource = new ByteArrayResource(decodeImage);
-//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/IMG_6986.jpg");
+//        Resource imageResource = this.resourceLoader.getResource("file:src/main/resources/IMG_6991.JPG");
 
         AnnotateImageResponse response = this.cloudVisionTemplate.analyzeImage(imageResource, Feature.Type.DOCUMENT_TEXT_DETECTION);
         List<String> textAnnotationsList = Arrays.stream(response.getFullTextAnnotation().getText().replaceAll(",", ".").split("\n")).collect(Collectors.toList());
@@ -53,12 +53,9 @@ public class ImagesController {
                     .build();
         }
         int productStartIndex = textAnnotationsList.indexOf(getIndexOfStartProductList(textAnnotationsList));
-        List<Product> products = textAnnotationsList.subList(productStartIndex, textAnnotationsList.size())
-                .stream()
-                .map(this::creteProduct)
-                .filter(Objects::nonNull)
-                .filter(item -> checkPriceEquality(item.getQuantity(), item.getPrice(), item.getTotalPrice()))
-                .collect(Collectors.toList());
+
+        List<String> productList = textAnnotationsList.subList(productStartIndex, textAnnotationsList.size());
+        List<Product> products = getProducts(productList);
 
         String date = textAnnotationsList.subList(0, productStartIndex)
                 .stream()
@@ -75,6 +72,19 @@ public class ImagesController {
                 .date(date)
                 .shopDetails(getShopDetails(shopDetailsEndIndex, textAnnotationsList))
                 .build();
+    }
+
+    private List<Product> getProducts(List<String> productList) {
+        List<Product> nonFilterProductsList = new ArrayList<>();
+
+        for (int i = 0; i < productList.size(); i++) {
+            nonFilterProductsList.add(createProduct(productList, i));
+        }
+
+        return nonFilterProductsList.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> checkPriceEquality(item.getQuantity(), item.getPrice(), item.getTotalPrice()))
+                .collect(Collectors.toList());
     }
 
     private String getShopDetails(int shopDetailsEndIndex, List<String> textAnnotationsList) {
@@ -96,17 +106,31 @@ public class ImagesController {
         return round(quantity * price) == totalPrice;
     }
 
-    private Product creteProduct(String line) {
+    private Product createProduct(List<String> textList, int index) {
+        String line = textList.get(index);
         List<String> prices = getPricesList(line);
         if (prices.size() > 2) {
+            String name = line.substring(0, line.indexOf(prices.get(prices.size() - 3))).trim();
+            if (StringUtils.isEmpty(name)) {
+                name = textList.get(index-1);
+            }
             return Product.builder()
-                    .name(line.substring(0, line.indexOf(prices.get(prices.size() - 3))))
+                    .name(name)
                     .price(convertToFloat(prices.get(prices.size() - 2)))
-                    .totalPrice(convertToFloat(prices.get(prices.size() - 1)))
+                    .totalPrice(convertToFloat(truncateAfterDot(prices.get(prices.size() - 1))))
                     .quantity(convertToFloat(prices.get(prices.size() - 3)))
                     .build();
         }
         return null;
+    }
+
+
+    private String truncateAfterDot(String price) {
+        int dotPosition = price.indexOf(".");
+        if (dotPosition > 0 ){
+            return price.substring(0, dotPosition + 3);
+        }
+        return price;
     }
 
     private float convertToFloat(String number) {
